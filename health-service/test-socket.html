@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+  <head>
+    <title>FamilyCare Real-time Test</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: Arial;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      .event {
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 5px;
+      }
+      .reminder {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+      }
+      .taken {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+      }
+      .online {
+        background: #cce5ff;
+        border-left: 4px solid #17a2b8;
+      }
+      .log {
+        background: white;
+        border: 1px solid #ddd;
+        padding: 10px;
+        height: 300px;
+        overflow-y: scroll;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔴 FamilyCare Real-time Monitor</h1>
+
+      <div>
+        <h3>Connection</h3>
+        <button onclick="connect()">Connect WebSocket</button>
+        <button onclick="joinFamily()">Join Family (ID: 1)</button>
+        <span id="status" style="margin-left: 10px">⚫ Disconnected</span>
+      </div>
+
+      <div>
+        <h3>Events Log</h3>
+        <div id="log" class="log"></div>
+      </div>
+    </div>
+
+    <script>
+      let socket;
+
+      function log(message, type = "info") {
+        const logDiv = document.getElementById("log");
+        const entry = document.createElement("div");
+        entry.className = `event ${type}`;
+        entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+      }
+
+      function connect() {
+        // Get token from your auth service
+        const token =
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzc1MjA0NDU2LCJleHAiOjE3NzUyOTA4NTZ9.Zg3kcXmMsUWlKuQOINz7TvocMWoAuFWiyBN_u2Usf3M"; // Replace with actual token
+
+        socket = io("ws://localhost:3003", {
+          auth: { token },
+        });
+
+        socket.on("connect", () => {
+          document.getElementById("status").innerHTML = "🟢 Connected";
+          log("✅ Connected to WebSocket server", "online");
+        });
+
+        socket.on("disconnect", () => {
+          document.getElementById("status").innerHTML = "⚫ Disconnected";
+          log("❌ Disconnected from server", "online");
+        });
+
+        socket.on("medication-reminder", (data) => {
+          log(
+            `🔔 REMINDER: ${data.patientName} needs to take ${data.medicationName}`,
+            "reminder",
+          );
+        });
+
+        socket.on("medication-taken", (data) => {
+          log(
+            `✅ TAKEN: ${data.patientName} took ${data.medicationName} (verified by ${data.takenBy})`,
+            "taken",
+          );
+        });
+
+        socket.on("user-online", (data) => {
+          log(`👤 User ${data.userId} is online`, "online");
+        });
+
+        socket.on("user-offline", (data) => {
+          log(`👤 User ${data.userId} went offline`, "online");
+        });
+
+        socket.on("connect_error", (err) => {
+          log(`❌ Connection error: ${err.message}`, "reminder");
+        });
+      }
+
+      function joinFamily() {
+        if (socket) {
+          socket.emit("join-family", 1);
+          log("👨‍👩‍👧 Joined family room: 1", "online");
+        } else {
+          log("❌ Connect first!", "reminder");
+        }
+      }
+    </script>
+  </body>
+</html>
