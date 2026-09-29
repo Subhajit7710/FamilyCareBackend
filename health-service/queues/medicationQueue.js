@@ -1,14 +1,10 @@
 const { Queue, Worker } = require("bullmq");
-const Redis = require("ioredis");
+const { createRedis } = require("../config/redis");
 const { Medication, Patient, MedicationLog } = require("../models");
 const { getIo } = require("../socket/ioStore");
 
 // Redis connection for BullMQ
-const connection = new Redis({
-  host: "localhost",
-  port: 6379,
-  maxRetriesPerRequest: null,
-});
+const connection = createRedis();
 
 // Create queue for medication reminders
 const medicationQueue = new Queue("medication-reminders", {
@@ -58,7 +54,7 @@ const reminderWorker = new Worker(
 
       // Publish to Redis for cross-service notification (non-fatal if Redis down)
       try {
-        const redis = new Redis({ host: "localhost", port: 6379, lazyConnect: true });
+        const redis = createRedis({ lazyConnect: true });
         await redis.connect();
         await redis.publish("medication:reminders", JSON.stringify(eventData));
         redis.disconnect();

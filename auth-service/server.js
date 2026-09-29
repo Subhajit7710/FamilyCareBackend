@@ -55,6 +55,7 @@ sequelize
   .then(() => console.log("Database synced"))
   .catch((err) => console.error("Sync error:", err));
 
-app.listen(PORT, () => {
-  console.log(`Auth Service running on port ${PORT}`);
-});
+const HOST = process.env.HOST; // e.g. 127.0.0.1 in production
+const onListen = () => console.log(`Auth Service running on ${HOST || "all interfaces"}:${PORT}`);
+if (HOST) app.listen(PORT, HOST, onListen);
+else app.listen(PORT, onListen);

@@ -40,6 +40,7 @@ sequelize
 app.use("/families", familyRoutes);
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`Family Service running on port ${PORT}`);
-});
+const HOST = process.env.HOST; // e.g. 127.0.0.1 in production
+const onListen = () => console.log(`Family Service running on ${HOST || "all interfaces"}:${PORT}`);
+if (HOST) app.listen(PORT, HOST, onListen);
+else app.listen(PORT, onListen);

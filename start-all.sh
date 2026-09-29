@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Start Docker containers
-cd FamilyCare-Server
-docker-compose up -d
+cd "$(dirname "$0")"
+docker compose up -d mysql redis 2>/dev/null || docker-compose up -d mysql redis
 
 echo "Docker containers started"
 echo "Waiting for containers to be ready..."

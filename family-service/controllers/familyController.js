@@ -121,7 +121,7 @@ const generateInvite = async (req, res) => {
       success: true,
       inviteCode,
       expiresIn: "24 hours",
-      inviteLink: `http://localhost:3000/join?code=${inviteCode}`,
+      inviteLink: `${process.env.FRONTEND_URL || "http://localhost:5173"}/join?code=${inviteCode}`,
     });
   } catch (error) {
     console.error("Generate invite error:", error);

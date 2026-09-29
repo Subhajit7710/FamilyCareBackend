@@ -1,34 +1,47 @@
-version: '3.8'
+# MySQL + Redis for FamilyCare.
+# Passwords come from a .env file next to this file (see .env.example).
+# The defaults below are only for local development.
+# Ports are bound to 127.0.0.1 so the databases are never reachable from the internet.
 
 services:
   mysql:
     image: mysql:8
     container_name: familycare-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: familycare_12345678
-      MYSQL_DATABASE: familycare
-      MYSQL_USER: user
-      MYSQL_PASSWORD: familycare_12345678
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-familycare_12345678}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-familycare}
+      MYSQL_USER: ${MYSQL_USER:-user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-familycare_12345678}
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: familycare-redis
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379" 
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
 
+  # Optional queue dashboard. Not started by default; the health-service
+  # already serves one at /admin/queues. Start with:
+  #   docker compose --profile tools up -d bull-board
   bull-board:
     image: deadly0/bull-board
     container_name: familycare-bullboard
+    profiles: ["tools"]
     ports:
-      - "3005:3000"
+      - "127.0.0.1:3005:3000"
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379

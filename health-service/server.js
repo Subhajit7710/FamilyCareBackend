@@ -1,14 +1,15 @@
+require("dotenv").config();
 const serverAdapter = require("./queues/bullBoard");
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const helmet = require("helmet");
 const http = require("http");
-const Redis = require("ioredis");
 const { sequelize, testConnection } = require("./config/database");
 const healthRoutes = require("./routes/healthRoutes");
 const { setupSocket } = require("./socket");
 const { initializeReminders } = require("./queues/medicationQueue");
+const { createRedis } = require("./config/redis");
 require("./models");
 
 dotenv.config();
@@ -16,9 +17,10 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3003;
+const HOST = process.env.HOST; // e.g. 127.0.0.1 in production
 
 // Redis client
-const redis = new Redis({ host: "localhost", port: 6379 });
+const redis = createRedis();
 
 // Middleware
 app.use(helmet());
@@ -66,7 +68,9 @@ console.log("WebSocket server ready");
 // Routes (these require authentication)
 app.use("/health", healthRoutes);
 
-server.listen(PORT, () => {
-  console.log(`Health Service running on port ${PORT}`);
-  console.log(`WebSocket available at ws://localhost:${PORT}`);
-});
+const onListen = () => {
+  console.log(`Health Service running on ${HOST || "all interfaces"}:${PORT}`);
+  console.log(`WebSocket available on port ${PORT}`);
+};
+if (HOST) server.listen(PORT, HOST, onListen);
+else server.listen(PORT, onListen);

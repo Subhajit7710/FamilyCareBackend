@@ -1,11 +1,11 @@
 const { Server } = require("socket.io");
-const Redis = require("ioredis");
+const { createRedis } = require("../config/redis");
 const jwt = require("jsonwebtoken");
 const { setIo } = require("./ioStore");
 
 // Redis client for Pub/Sub
-const redis = new Redis({ host: "localhost", port: 6379 });
-const redisSub = new Redis({ host: "localhost", port: 6379 });
+const redis = createRedis();
+const redisSub = createRedis();
 
 // Store active connections
 const activeUsers = new Map();
