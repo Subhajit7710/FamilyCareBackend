@@ -1,11 +1,11 @@
-# Deploying FamilyCare (free) — Oracle Cloud + Vercel
+# Deploying FamilyCare — AWS (student / Learner Lab) + Vercel
 
 ```
  Browser ──HTTPS──► Vercel (React frontend)           free
     │
     └──HTTPS──► familycare.duckdns.org                 free domain
                   │
-                  ▼  Oracle Cloud "Always Free" Ubuntu VM
+                  ▼  AWS EC2 Ubuntu server (paid from your student credits)
                  nginx (HTTPS, Let's Encrypt)
                   └─► api-gateway :3000
                         ├─► auth-service   :3001 ─┐
@@ -16,87 +16,87 @@
 Only ports 22 (SSH), 80 and 443 are open to the internet. The services and
 databases listen on `127.0.0.1` only.
 
-Total time: about 45 minutes. You do steps 1–5 in your browser, then one
-command on the server does the rest.
+> **Important — AWS Academy Learner Lab limits**
+> - Your server runs **only while the lab session is active**. When the session
+>   ends, AWS stops the server and the app is offline until you start the lab again.
+>   Everything (databases + services) starts again automatically when the server starts.
+> - Only regions **us-east-1 (N. Virginia)** and **us-west-2 (Oregon)** are allowed.
+>   Use **us-east-1**, where the ready-made key pair `vockey` exists.
+> - Stop the server when you don't need it, to save credits.
+
+Total time: about 45 minutes.
 
 ---
 
 ## 1. Push both projects to GitHub
 
 The server downloads the backend from GitHub, and Vercel builds the frontend
-from GitHub, so both repos must contain the latest code (including your
-uncommitted frontend changes).
-
-In each project folder (PowerShell or Git Bash):
+from GitHub. In each project folder:
 
 ```bash
 git add -A
 git commit -m "Prepare for deployment"
+git pull --rebase
 git push
 ```
 
-`.env` files are ignored by git on purpose. The server generates its own.
+## 2. Start the lab and open the AWS console
 
-## 2. Create an Oracle Cloud account
+AWS Academy → your course → **Modules → Learner Lab** → **Start Lab**.
+Wait until the dot next to "AWS" turns **green**, then click **AWS**.
+In the top-right corner, make sure the region is **N. Virginia (us-east-1)**.
 
-1. Go to <https://signup.cloud.oracle.com> and sign up.
-   A card is needed for identity verification; Always Free resources are not charged.
-2. **Home region:** pick one close to you (e.g. *India West (Mumbai)* or
-   *India South (Hyderabad)*). It cannot be changed later.
+## 3. Create the server
 
-## 3. Create the server (VM)
-
-Menu → **Compute → Instances → Create instance**
+Search **EC2** → **Launch instance**:
 
 | Setting | Value |
 |---|---|
 | Name | `familycare` |
-| Image | **Canonical Ubuntu 24.04** (click *Change image*) |
-| Shape | *Change shape* → **Ampere** → `VM.Standard.A1.Flex`, **2 OCPU, 12 GB** (Always Free) |
-| Networking | *Create new virtual cloud network* + *public subnet*, **Assign a public IPv4 address: Yes** |
-| SSH keys | **Generate a key pair for me** → **Download private key** (keep it safe!) |
-| Boot volume | default (50 GB is free) |
+| Image (AMI) | **Ubuntu Server 24.04 LTS** (64-bit x86) |
+| Instance type | **t3.small** (2 GB RAM). `t3.medium` is faster but uses credits faster. |
+| Key pair | **vockey** |
+| Network settings → **Edit** | *Create security group*, name `familycare-sg`, with these inbound rules: |
+| | SSH, TCP 22, Source: Anywhere (0.0.0.0/0) |
+| | HTTP, TCP 80, Source: Anywhere (0.0.0.0/0) |
+| | HTTPS, TCP 443, Source: Anywhere (0.0.0.0/0) |
+| Storage | **20 GiB**, gp3 |
 
-Click **Create**. When it is *Running*, copy the **Public IP address**.
+Click **Launch instance**.
 
-> **"Out of capacity" error?** Free ARM servers are popular. Try another
-> *Availability domain* in the same screen, or try again later.
-> Upgrading the account to *Pay As You Go* (still free for Always Free resources)
-> usually fixes this and also protects the VM from Oracle's idle-instance reclaim.
-> If you do upgrade, set a budget alert under *Billing → Budgets*.
+## 4. Give the server a fixed IP (Elastic IP)
 
-## 4. Open ports 80 and 443 in Oracle's firewall
+Without this, the IP changes every time the lab restarts the server.
 
-Instance page → click the **Subnet** link → **Security** (or *Security Lists*) →
-**Default Security List** → **Add Ingress Rules**:
-
-| Source CIDR | IP Protocol | Destination Port |
-|---|---|---|
-| `0.0.0.0/0` | TCP | `80` |
-| `0.0.0.0/0` | TCP | `443` |
-
-(Port 22 for SSH is already there. The server's own internal firewall is
-opened by the setup script.)
+EC2 → **Elastic IPs** (left menu) → **Allocate Elastic IP address** → **Allocate**.
+Then select it → **Actions → Associate Elastic IP address** → choose the
+`familycare` instance → **Associate**. Copy the IP address.
 
 ## 5. Get a free domain name (needed for HTTPS)
 
 1. Go to <https://www.duckdns.org> and sign in (e.g. with Google).
 2. Create a subdomain, e.g. `familycare` → you get `familycare.duckdns.org`.
-3. Put the server's **public IP** in the *current ip* box → **update ip**.
+3. Put your **Elastic IP** in the *current ip* box → **update ip**.
 
-## 6. Connect to the server and run the setup script
+## 6. Open a terminal on the server and run the setup script
 
-On Windows, open **PowerShell**. First restrict the key file (SSH refuses keys
-that other users can read):
+**Easiest (in the browser):** EC2 → Instances → select `familycare` →
+**Connect** → tab **EC2 Instance Connect** → username `ubuntu` → **Connect**.
+
+<details>
+<summary>Alternative: SSH from Windows PowerShell</summary>
+
+In the Learner Lab page click **AWS Details** → **Download PEM** (`labsuser.pem`). Then:
 
 ```powershell
-$key = "C:\Users\HP\Downloads\ssh-key-XXXX.key"   # your downloaded key
+$key = "C:\Users\HP\Downloads\labsuser.pem"
 icacls $key /inheritance:r
 icacls $key /grant:r "$($env:USERNAME):(R)"
-ssh -i $key ubuntu@YOUR_PUBLIC_IP
+ssh -i $key ubuntu@YOUR_ELASTIC_IP
 ```
+</details>
 
-Type `yes` the first time. You are now on the server. Run:
+In the server terminal, run:
 
 ```bash
 git clone https://github.com/Subhajit7710/FamilyCareBackend.git
@@ -106,8 +106,9 @@ bash deploy/setup-server.sh familycare.duckdns.org your-email@gmail.com
 
 - Private repo? Git asks for your GitHub username and a **personal access token**
   (GitHub → Settings → Developer settings → Personal access tokens) as the password.
-- The script takes ~5–10 minutes. It installs everything, generates passwords
-  and a JWT secret, starts MySQL/Redis/the 4 services, and gets the HTTPS certificate.
+- The script takes ~5–10 minutes. It installs everything, adds swap memory,
+  generates passwords and a JWT secret, starts MySQL/Redis/the 4 services, and
+  gets the HTTPS certificate.
 
 When it finishes, open **https://familycare.duckdns.org/gateway/status**. You should see:
 
@@ -115,7 +116,7 @@ When it finishes, open **https://familycare.duckdns.org/gateway/status**. You sh
 {"success":true,"status":{"auth":"healthy","family":"healthy","health":"healthy"}}
 ```
 
-## 7. Deploy the frontend on Vercel
+## 7. Deploy the frontend on Vercel (free)
 
 1. <https://vercel.com> → sign in with GitHub → **Add New → Project** →
    import **FamilyCareFrontend**. Vercel detects Vite automatically.
@@ -125,8 +126,7 @@ When it finishes, open **https://familycare.duckdns.org/gateway/status**. You sh
 
 ## 8. Lock the API to your frontend (recommended)
 
-Back on the server (SSH), re-run the setup script with your Vercel URL as the
-third argument. Now only your site may call the API from a browser:
+On the server, re-run the script with your Vercel URL as the third argument:
 
 ```bash
 cd ~/FamilyCareBackend
@@ -137,10 +137,18 @@ Done! Open your Vercel URL, register, and log in.
 
 ---
 
+## Every time you want the app online
+
+1. AWS Academy → Learner Lab → **Start Lab** → wait for the green dot → **AWS**.
+2. EC2 → Instances: if `familycare` shows **Stopped**, select it →
+   **Instance state → Start**.
+3. Wait ~1 minute. MySQL, Redis and the 4 services start by themselves.
+   The Elastic IP keeps your domain working.
+
 ## Updating the app later
 
 - **Frontend:** `git push` → Vercel redeploys automatically.
-- **Backend:** `git push`, then on the server:
+- **Backend:** `git push`, then in the server terminal:
   ```bash
   cd ~/FamilyCareBackend && bash deploy/update.sh
   ```
@@ -160,12 +168,12 @@ Done! Open your Vercel URL, register, and log in.
 
 | Problem | Fix |
 |---|---|
-| Site doesn't load at all | Check step 4 (Security List rules for 80/443) and that DuckDNS has the right IP. |
+| Site doesn't load at all | Is the lab running and the instance **Running**? Check the security group has ports 80/443, and that DuckDNS has your Elastic IP. |
 | Certificate step failed | DNS was not ready. Wait a minute, then `sudo certbot --nginx -d familycare.duckdns.org -m you@gmail.com --agree-tos --redirect` |
 | Frontend shows network/CORS errors | `VITE_API_URL` on Vercel must be exactly `https://familycare.duckdns.org`, and step 8's URL must match your Vercel URL exactly. Redeploy Vercel after changing variables. |
 | Refreshing a page on Vercel gives 404 | Make sure `vercel.json` is committed in the frontend repo. |
+| EC2 Instance Connect fails | Use the SSH option in step 6. |
 | Reminders at the wrong time | The script sets the server to `Asia/Kolkata`. Check with `timedatectl`. |
-| Server IP changed | Update the IP on duckdns.org. |
 
 ## Local development still works as before
 

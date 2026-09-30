@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# FamilyCare backend - one-time server setup (Oracle Cloud / any Ubuntu VM)
+# FamilyCare backend - one-time server setup (AWS EC2 / Oracle Cloud / any Ubuntu VM)
 #
 # Run from the project folder on the server:
 #   bash deploy/setup-server.sh <domain> <email> [frontend-url]
@@ -10,7 +10,7 @@
 #
 # What it does:
 #   1. Sets timezone to Asia/Kolkata (medication reminders use server time)
-#   2. Opens ports 80/443 in the server's own firewall (Oracle blocks them by default)
+#   2. Adds swap on small servers; opens ports 80/443 in the server firewall if needed (Oracle)
 #   3. Installs Node.js 22, Docker, nginx, certbot and pm2
 #   4. Generates strong passwords + JWT secret and writes all .env files
 #   5. Starts MySQL + Redis (Docker) and the 4 Node services (pm2)
@@ -43,22 +43,37 @@ step "Setting timezone to Asia/Kolkata"
 sudo timedatectl set-timezone Asia/Kolkata
 
 # ── 2. System packages + firewall ─────────────────────────────────────────
-step "Installing system packages (nginx, certbot, git, firewall tools)"
-echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | sudo debconf-set-selections
-echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | sudo debconf-set-selections
+step "Installing system packages (nginx, certbot, git)"
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  ca-certificates curl git openssl nginx certbot python3-certbot-nginx iptables-persistent
+  ca-certificates curl git openssl nginx certbot python3-certbot-nginx
 
-step "Opening ports 80 and 443 in the server firewall"
-# Oracle's Ubuntu images ship iptables rules that reject everything except SSH.
-# (You must ALSO allow 80/443 in the Oracle Cloud "Security List" - see DEPLOY.md.)
-for port in 80 443; do
-  if ! sudo iptables -C INPUT -p tcp -m state --state NEW --dport "$port" -j ACCEPT 2>/dev/null; then
-    sudo iptables -I INPUT 1 -p tcp -m state --state NEW --dport "$port" -j ACCEPT
-  fi
-done
-sudo netfilter-persistent save
+# Oracle Cloud's Ubuntu images ship iptables rules that reject everything except
+# SSH. AWS images don't, so this step only runs when such a rule exists.
+if sudo iptables -S INPUT 2>/dev/null | grep -q -- "-j REJECT"; then
+  step "Opening ports 80 and 443 in the server firewall"
+  echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | sudo debconf-set-selections
+  echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | sudo debconf-set-selections
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent
+  for port in 80 443; do
+    if ! sudo iptables -C INPUT -p tcp -m state --state NEW --dport "$port" -j ACCEPT 2>/dev/null; then
+      sudo iptables -I INPUT 1 -p tcp -m state --state NEW --dport "$port" -j ACCEPT
+    fi
+  done
+  sudo netfilter-persistent save
+fi
+
+# Small servers (e.g. AWS t3.micro/t3.small) need swap space so MySQL + 4 Node
+# services don't run out of memory.
+MEM_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)"
+if (( MEM_MB < 3500 )) && ! swapon --show | grep -q .; then
+  step "Adding 2 GB swap (server has ${MEM_MB} MB RAM)"
+  sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile
+  sudo swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+fi
 
 # ── 3. Node.js, Docker, pm2 ───────────────────────────────────────────────
 NODE_MAJOR=0
