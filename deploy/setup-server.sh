@@ -205,6 +205,19 @@ else
   sudo certbot --nginx -d "$DOMAIN" -m "$EMAIL" --agree-tos --non-interactive --redirect --keep-until-expiring
 fi
 
+# Safety net: if a certificate exists but nginx is not serving HTTPS
+# (e.g. the site file was rewritten), install the certificate into nginx again.
+if sudo test -d "/etc/letsencrypt/live/$DOMAIN" && ! sudo ss -ltn | grep -q ':443 '; then
+  warn "Certificate exists but nginx is not listening on 443 - installing it into nginx"
+  sudo certbot install --nginx --cert-name "$DOMAIN" --non-interactive --redirect
+  sudo systemctl reload nginx
+fi
+if sudo ss -ltn | grep -q ':443 '; then
+  echo "HTTPS is active on port 443."
+else
+  warn "nginx is NOT listening on port 443 - HTTPS will not work. See DEPLOY.md troubleshooting."
+fi
+
 step "Done!"
 cat <<EOF
 
